@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דוח ביצועי חשבון מסחר שלך</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root { color-scheme: light; }
+
+  .viz-root {
+    --surface-1:      #ffffff;
+    --page-plane:     #f3f4f6;
+    --text-primary:   #14202e;
+    --text-secondary: #4a5568;
+    --text-muted:     #8592a3;
+    --gridline:       #e4e7ec;
+    --baseline:       #c7ccd4;
+    --border:         rgba(20,32,46,0.10);
+    --accent-slate:   #5b7290;
+    --accent-navy:    #1c3a5e;
+    --accent-gold:    #a67c27;
+    --good:           #0ca30c;
+    --good-text:      #146c2e;
+    --critical:       #b23b3b;
+    --card-shadow:    0 1px 2px rgba(20,32,46,0.05), 0 1px 8px rgba(20,32,46,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #161c24;
+      --page-plane:     #0c0f13;
+      --text-primary:   #f0f2f5;
+      --text-secondary: #aab2c0;
+      --text-muted:     #7c8798;
+      --gridline:       #262d38;
+      --baseline:       #384252;
+      --border:         rgba(255,255,255,0.10);
+      --accent-slate:   #8aa0bf;
+      --accent-navy:    #5b8fc7;
+      --accent-gold:    #d4a94a;
+      --good:           #35b859;
+      --good-text:      #35b859;
+      --critical:       #e0736f;
+      --card-shadow:    0 1px 2px rgba(0,0,0,0.3), 0 1px 8px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #161c24;
+    --page-plane:     #0c0f13;
+    --text-primary:   #f0f2f5;
+    --text-secondary: #aab2c0;
+    --text-muted:     #7c8798;
+    --gridline:       #262d38;
+    --baseline:       #384252;
+    --border:         rgba(255,255,255,0.10);
+    --accent-slate:   #8aa0bf;
+    --accent-navy:    #5b8fc7;
+    --accent-gold:    #d4a94a;
+    --good:           #35b859;
+    --good-text:      #35b859;
+    --critical:       #e0736f;
+    --card-shadow:    0 1px 2px rgba(0,0,0,0.3), 0 1px 8px rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", "Arial Hebrew", sans-serif;
+  }
+  .viz-root {
+    padding: 32px 20px 80px;
+    min-height: 100vh;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .accent-bar {
+    height: 4px;
+    border-radius: 4px;
+    margin-bottom: 22px;
+    background: linear-gradient(90deg, var(--accent-navy) 0%, var(--accent-navy) 70%, var(--accent-gold) 100%);
+  }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .meta { color: var(--text-secondary); font-size: 14px; margin: 0; }
+  .theme-toggle {
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+  .btn-row { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
+  .name-input {
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    width: 140px;
+    font-family: inherit;
+  }
+  .name-input:focus { outline: none; border-color: var(--accent-navy); }
+  .name-input.invalid { border-color: var(--critical); }
+  .name-input::placeholder { color: var(--text-muted); }
+  .btn-export, .btn-upload {
+    border: 1px solid var(--accent-navy);
+    background: var(--accent-navy);
+    color: #ffffff;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-upload { background: var(--surface-1); color: var(--accent-navy); }
+  .btn-export:hover, .btn-upload:hover { opacity: 0.85; }
+  .btn-export svg, .btn-upload svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  #uploadStatus {
+    display: none;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  #uploadStatus.show { display: block; }
+  #uploadStatus.err { background: color-mix(in srgb, var(--critical) 10%, var(--surface-1)); color: var(--critical); border: 1px solid var(--critical); }
+  #uploadStatus.info { background: var(--surface-1); border: 1px solid var(--border); color: var(--text-secondary); }
+
+  section { margin-bottom: 36px; }
+  h2 {
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+  h3 {
+    font-size: 16px;
+    margin: 0 0 4px;
+    color: var(--text-primary);
+  }
+
+  /* Stat tiles */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat-tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    box-shadow: var(--card-shadow);
+  }
+  .stat-tile.accent-violet { border-top-color: var(--accent-navy); }
+  .stat-tile.accent-blue   { border-top-color: var(--accent-slate); }
+  .stat-tile.accent-good   { border-top-color: var(--good); }
+  .stat-tile.accent-aqua   { border-top-color: var(--accent-gold); }
+  .stat-label {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    direction: ltr;
+    unicode-bidi: isolate;
+    display: block;
+  }
+  .stat-value.good { color: var(--good-text); }
+  .stat-value.bad { color: var(--critical); }
+  .stat-value.na { font-size: 15px; color: var(--text-muted); font-weight: 600; }
+  .stat-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Charts */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .chart-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px 12px;
+    box-shadow: var(--card-shadow);
+  }
+  .chart-card svg { overflow: visible; direction: ltr; }
+  .bar { transition: opacity 0.1s; }
+  .bar:hover, .bar.hover { opacity: 0.82; cursor: pointer; }
+  .bar-value {
+    font-size: 12.5px;
+    font-weight: 600;
+    fill: var(--text-primary);
+    text-anchor: middle;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-cat {
+    font-size: 11.5px;
+    fill: var(--text-muted);
+    text-anchor: middle;
+    direction: ltr;
+  }
+  .axis-line { stroke: var(--baseline); stroke-width: 1px; }
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--text-primary);
+    color: var(--surface-1);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transform: translate(-50%, -115%);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.08s;
+    z-index: 10;
+    direction: rtl;
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip .tt-val { font-weight: 700; }
+  .chart-wrap { position: relative; }
+
+  .legend-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .legend-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+    font-size: 14px;
+  }
+  caption { display: none; }
+  thead th {
+    text-align: right;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    font-weight: 700;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--gridline);
+    white-space: nowrap;
+  }
+  thead th.num, td.num { text-align: left; direction: ltr; }
+  tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--gridline);
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.total-row td { font-weight: 700; background: color-mix(in srgb, var(--accent-navy) 6%, transparent); }
+  td.positive { color: var(--good-text); font-weight: 600; }
+  td.negative { color: var(--critical); font-weight: 600; }
+  td.label-cell { color: var(--text-secondary); }
+  .table-wrap { overflow-x: auto; }
+
+  .note {
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+  .note strong { color: var(--text-primary); }
+  .note.warn { border-right: 3px solid var(--critical); border-left: none; }
+  .note ul { margin: 8px 0 0; padding-right: 18px; padding-left: 0; }
+  .note li { margin-bottom: 6px; }
+
+  .top5-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .top5-grid h3 {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 10px;
+  }
+  .top5-grid table { font-size: 13.5px; }
+  .top5-grid td.rank { color: var(--text-muted); width: 20px; }
+  .top5-grid td.sym { font-weight: 600; direction: ltr; text-align: right; }
+  .empty-note { color: var(--text-muted); font-size: 13.5px; padding: 4px 2px; }
+
+  .alloc-grid {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    align-items: center;
+  }
+  .donut-wrap {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto;
+  }
+  .donut-wrap svg { direction: ltr; }
+  .donut-seg { transition: opacity 0.1s; cursor: pointer; }
+  .donut-seg:hover, .donut-seg.hover { opacity: 0.82; }
+  .donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .donut-center .lbl { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+  .donut-center .val { font-size: 18px; font-weight: 700; color: var(--text-primary); direction: ltr; }
+  .alloc-legend { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .alloc-legend td { padding: 8px 0; border-bottom: 1px solid var(--gridline); }
+  .alloc-legend tr:last-child td { border-bottom: none; }
+  .alloc-legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 8px; vertical-align: middle; }
+  .alloc-legend .name { font-weight: 600; }
+  .alloc-legend td.num { text-align: left; direction: ltr; font-variant-numeric: tabular-nums; }
+  .alloc-legend td.pct { color: var(--text-secondary); width: 60px; }
+
+  .insight-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .insight-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-right: 3px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: var(--card-shadow);
+  }
+  .insight-card .k { font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px; }
+  .insight-card .v { font-size: 17px; font-weight: 600; }
+  .insight-card .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; }
+
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    margin-top: 40px;
+  }
+
+  @media (max-width: 720px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .chart-grid { grid-template-columns: 1fr; }
+    .top5-grid { grid-template-columns: 1fr; }
+    .alloc-grid { grid-template-columns: 1fr; }
+    .insight-grid { grid-template-columns: 1fr; }
+    table { font-size: 12.5px; }
+  }
+
+  @media print {
+    @page { size: A4; margin: 14mm 12mm; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    body { background: #ffffff; }
+    .viz-root { padding: 0; background: #ffffff; }
+    .btn-row, .theme-toggle, .btn-export, .btn-upload { display: none !important; }
+    .tooltip { display: none !important; }
+    #emptyState { display: none !important; }
+    .stat-tile, .chart-card, table, .note, .insight-card {
+      box-shadow: none !important;
+    }
+    section { margin-bottom: 18px; break-inside: avoid; }
+    .stat-tile, .chart-card, table, .note, .insight-card { break-inside: avoid; }
+    h1 { font-size: 20px; }
+    .accent-bar { margin-bottom: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+
+    <div class="top-bar">
+      <div>
+        <h1 id="mainTitle">דוח ביצועי חשבון מסחר</h1>
+        <p class="meta" id="metaLine">&nbsp;</p>
+        <p class="meta" id="generatedStamp" style="margin-top:4px; font-size:12px;"></p>
+      </div>
+      <div class="btn-row">
+        <input type="text" id="userName" class="name-input" placeholder="שם מלא *" autocomplete="name">
+        <button class="btn-upload" id="uploadBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M4 21h16"/></svg>
+          העלאת קובץ נתונים
+        </button>
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none">
+        <button class="btn-export" id="exportPdf" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+          ייצוא ל-PDF
+        </button>
+        <button class="theme-toggle" id="themeToggle" type="button">מעבר למצב כהה</button>
+      </div>
+    </div>
+    <div class="accent-bar"></div>
+
+    <div id="uploadStatus"></div>
+
+    <!-- Empty state, shown until a file is uploaded -->
+    <div class="card" id="emptyState" style="text-align:center; padding:52px 24px;">
+      <div style="font-size:36px; margin-bottom:14px;">&#128202;</div>
+      <h2 style="text-transform:none; font-size:18px; color:var(--text-primary); margin-bottom:8px; letter-spacing:0;">העלה קובץ תנועות כדי להתחיל</h2>
+      <p class="meta" style="max-width:440px; margin:0 auto 22px; line-height:1.6;">
+        קובץ CSV או Excel מהברוקר שלך (עדיף עם גיליון יתרות/החזקות נוכחי גם כן).
+        כל העיבוד מתבצע מקומית בדפדפן שלך &ndash; שום מידע לא נשלח לשום שרת.
+      </p>
+      <button class="btn-export" id="emptyStateUploadBtn" type="button" style="padding:10px 20px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M4 21h16"/></svg>
+        העלאת קובץ נתונים
+      </button>
+    </div>
+
+    <div id="dashboardSections" style="display:none;">
+
+    <!-- 1. Headline stats -->
+    <section>
+      <h2>ביצועי החשבון הכוללים (מתחילת הפעילות)</h2>
+      <div class="stat-grid">
+        <div class="stat-tile accent-violet">
+          <div class="stat-label">סך הפקדות נטו</div>
+          <div class="stat-value" id="statInvested">&mdash;</div>
+        </div>
+        <div class="stat-tile accent-blue">
+          <div class="stat-label">שווי חשבון נוכחי</div>
+          <div class="stat-value" id="statValue">&mdash;</div>
+          <div class="stat-sub" id="statValueSub"></div>
+        </div>
+        <div class="stat-tile accent-good">
+          <div class="stat-label">רווח נקי כולל</div>
+          <div class="stat-value" id="statProfit">&mdash;</div>
+          <div class="stat-sub" id="statProfitSub"></div>
+        </div>
+        <div class="stat-tile accent-aqua">
+          <div class="stat-label">תשואה כוללת</div>
+          <div class="stat-value" id="statRoi">&mdash;</div>
+          <div class="stat-sub" id="statRoiSub"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Charts -->
+    <section>
+      <h2>תמונת מצב שנתית</h2>
+      <div class="legend-row" id="yearLegend"></div>
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>רווח ממומש לפי שנה</h3>
+          <p class="meta" style="margin-bottom:14px;">עסקאות סגורות בלבד (FIFO), לפי שנת המכירה</p>
+          <div class="chart-wrap" id="chart-value"></div>
+        </div>
+        <div class="chart-card">
+          <h3>תשואה על עסקאות</h3>
+          <p class="meta" style="margin-bottom:14px;">רווח ממומש ביחס לעלות הבסיס, לפי שנה</p>
+          <div class="chart-wrap" id="chart-return"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Yearly summary table -->
+    <section>
+      <h2>סיכום שנתי</h2>
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>שנה</th>
+            <th class="num">תזרים מזומנים נטו</th>
+            <th class="num">רווח ממומש ($)</th>
+            <th class="num">דיבידנדים</th>
+            <th class="num">עמלות ומס</th>
+            <th class="num">תשואה על עסקאות</th>
+          </tr>
+        </thead>
+        <tbody id="yearlyTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- 3b. Top 5 stocks by return, per year -->
+    <section>
+      <h2>5 המניות המובילות בתשואה, לפי שנה</h2>
+      <p class="meta" style="margin-bottom:14px;">
+        תשואה ממומשת על עסקאות סגורות בלבד (שיוך קניה&ndash;מכירה בשיטת FIFO), משויכת לשנת המכירה.
+        אינה כוללת פוזיציות פתוחות שטרם נמכרו.
+      </p>
+      <div class="top5-grid" id="top5Host"></div>
+    </section>
+
+    <!-- 3c. Worst 5 stocks by return, per year -->
+    <section>
+      <h2>5 המניות החלשות ביותר בתשואה, לפי שנה</h2>
+      <p class="meta" style="margin-bottom:14px;">
+        אותה שיטת חישוב (תשואה ממומשת, FIFO, לפי שנת המכירה) &ndash; הפעם עבור המניות שהפסידו הכי הרבה.
+      </p>
+      <div class="top5-grid" id="worst5Host"></div>
+    </section>
+
+    <!-- 3d. Trading efficiency -->
+    <section>
+      <h2>יעילות מסחר לפי שנה</h2>
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>שנה</th>
+            <th class="num">מס' עסקאות סגורות</th>
+            <th class="num">אחוז עסקאות מרוויחות</th>
+            <th class="num">משך אחזקה ממוצע</th>
+          </tr>
+        </thead>
+        <tbody id="efficiencyTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- 5b. Current portfolio allocation -->
+    <section>
+      <h2>הרכב תיק פתוח נוכחי</h2>
+      <p class="meta" style="margin-bottom:14px;" id="allocSubtitle">לפי קובץ היתרות שהועלה</p>
+      <div class="chart-card" id="allocCard">
+        <div class="alloc-grid" id="allocGrid">
+          <div class="donut-wrap" id="chart-allocation">
+            <div class="donut-center">
+              <div class="lbl">שווי כולל</div>
+              <div class="val" id="allocCenterVal">&mdash;</div>
+            </div>
+          </div>
+          <table class="alloc-legend">
+            <tbody id="allocLegendBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-note" id="allocEmptyNote" style="display:none;"></div>
+      </div>
+    </section>
+
+    <!-- 6. Key insights -->
+    <section>
+      <h2>תובנות עיקריות</h2>
+      <div class="insight-grid" id="insightsHost"></div>
+    </section>
+
+    <!-- 7. Data notes / warnings -->
+    <section>
+      <h2>הערות על הנתונים</h2>
+      <div id="warningsHost"></div>
+    </section>
+
+    <footer>הופק מתוך קובץ התנועות (והיתרות, אם צורף) שהועלה &middot; כל החישובים בוצעו מקומית בדפדפן</footer>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const root = document.querySelector('.viz-root');
+
+  // ============================================================
+  // Theme toggle
+  // ============================================================
+  const toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', function() {
+    const current = document.documentElement.getAttribute('data-theme');
+    if (current === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      toggle.textContent = 'מעבר למצב כהה';
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      toggle.textContent = 'מעבר למצב בהיר';
+    }
+  });
+
+  // "Generated at" stamp
+  const stampEl = document.getElementById('generatedStamp');
+  function updateGeneratedStamp() {
+    const now = new Date();
+    const datePart = now.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timePart = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    stampEl.textContent = `קובץ זה הופק בתאריך: ${datePart}, בשעה ${timePart}`;
+  }
+  updateGeneratedStamp();
+
+  const exportBtn = document.getElementById('exportPdf');
+  let themeBeforePrint = null;
+  exportBtn.addEventListener('click', function() {
+    updateGeneratedStamp();
+    themeBeforePrint = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', 'light');
+    window.print();
+  });
+  window.addEventListener('afterprint', function() {
+    if (themeBeforePrint) document.documentElement.setAttribute('data-theme', themeBeforePrint);
+    else document.documentElement.removeAttribute('data-theme');
+    themeBeforePrint = null;
+  });
+
+  // ============================================================
+  // Shared tooltip + chart primitives (SVG, no external chart lib)
+  // ============================================================
+  const tooltip = document.createElement('div');
+  tooltip.className = 'tooltip';
+  root.appendChild(tooltip);
+  function showTooltip(evt, html) {
+    tooltip.innerHTML = html;
+    const wrapRect = root.getBoundingClientRect();
+    tooltip.style.left = (evt.clientX - wrapRect.left) + 'px';
+    tooltip.style.top = (evt.clientY - wrapRect.top) + 'px';
+    tooltip.classList.add('show');
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  function renderBarChart(containerId, data, valueFmt) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    if (!data.length) { container.innerHTML = '<div class="empty-note">אין נתונים להצגה</div>'; return; }
+    const width = 400, height = 200;
+    const padTop = 24, padBottom = 30, padSide = 16;
+    const plotW = width - padSide * 2;
+    const plotH = height - padTop - padBottom;
+    const vals = data.map(d => d.value);
+    const maxVal = Math.max(0, ...vals) * 1.15 || 1;
+    const minVal = Math.min(0, ...vals) * 1.15;
+    const range = (maxVal - minVal) || 1;
+    const zeroY = padTop + (maxVal / range) * plotH;
+    const barSlot = plotW / data.length;
+    const barW = Math.min(28, barSlot * 0.5);
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', height);
+
+    const base = document.createElementNS(svgNS, 'line');
+    base.setAttribute('x1', padSide);
+    base.setAttribute('x2', width - padSide);
+    base.setAttribute('y1', zeroY);
+    base.setAttribute('y2', zeroY);
+    base.setAttribute('class', 'axis-line');
+    svg.appendChild(base);
+
+    data.forEach((d, i) => {
+      const cx = padSide + barSlot * i + barSlot / 2;
+      const barH = Math.abs(d.value) / range * plotH;
+      const y = d.value >= 0 ? zeroY - barH : zeroY;
+
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', cx - barW / 2);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', Math.max(barH, 2));
+      rect.setAttribute('rx', 4);
+      rect.setAttribute('class', 'bar');
+      rect.setAttribute('fill', d.color);
+
+      rect.addEventListener('pointermove', (evt) => {
+        rect.classList.add('hover');
+        showTooltip(evt, `<span>${d.label}</span> &nbsp;<span class="tt-val">${valueFmt(d.value)}</span>`);
+      });
+      rect.addEventListener('pointerleave', () => { rect.classList.remove('hover'); hideTooltip(); });
+      svg.appendChild(rect);
+
+      const valLabel = document.createElementNS(svgNS, 'text');
+      valLabel.setAttribute('x', cx);
+      valLabel.setAttribute('y', d.value >= 0 ? (y - 8) : (y + Math.max(barH, 2) + 14));
+      valLabel.setAttribute('class', 'bar-value');
+      valLabel.textContent = valueFmt(d.value);
+      svg.appendChild(valLabel);
+
+      const catLabel = document.createElementNS(svgNS, 'text');
+      catLabel.setAttribute('x', cx);
+      catLabel.setAttribute('y', height - padBottom + 18);
+      catLabel.setAttribute('class', 'bar-cat');
+      catLabel.textContent = d.label;
+      svg.appendChild(catLabel);
+    });
+
+    container.appendChild(svg);
+  }
+
+  function renderDonutChart(containerId, data) {
+    const container = document.getElementById(containerId);
+    Array.from(container.querySelectorAll('svg')).forEach(el => el.remove());
+    const size = 200, r = 80, sw = 28, cx = 100, cy = 100;
+    const circumference = 2 * Math.PI * r;
+    const gap = 2;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', size);
+
+    const group = document.createElementNS(svgNS, 'g');
+    group.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+    svg.appendChild(group);
+
+    let cumulative = 0;
+    data.forEach(d => {
+      const segLen = (d.pct / 100) * circumference;
+      const drawLen = Math.max(segLen - gap, 0);
+      const circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', d.color);
+      circle.setAttribute('stroke-width', sw);
+      circle.setAttribute('stroke-dasharray', `${drawLen} ${circumference - drawLen}`);
+      circle.setAttribute('stroke-dashoffset', -cumulative);
+      circle.setAttribute('class', 'donut-seg');
+      circle.addEventListener('pointermove', (evt) => {
+        circle.classList.add('hover');
+        showTooltip(evt, `<span>${d.label}</span> &nbsp;<span class="tt-val">${d.pct.toFixed(1)}% &middot; ${fmtMoney(d.value)}</span>`);
+      });
+      circle.addEventListener('pointerleave', () => { circle.classList.remove('hover'); hideTooltip(); });
+      group.appendChild(circle);
+      cumulative += segLen;
+    });
+
+    container.prepend(svg);
+  }
+
+  // ============================================================
+  // Column & action synonyms (English + Hebrew)
+  // ============================================================
+  const SYN = {
+    date:         ['date', 'trade date', 'settlement date', 'תאריך'],
+    action:       ['action', 'type', 'transaction type', 'activity', 'description', 'סוג פעולה', 'פעולה'],
+    symbol:       ['symbol', 'ticker', 'security', 'instrument', 'שם הנייר', 'נייר'],
+    qty:          ['quantity', 'qty', 'shares', 'units', 'כמות'],
+    price:        ['average price', 'avg price', 'unit price', 'price', 'מחיר ממוצע', 'מחיר'],
+    amount:       ['net amount', 'total amount', 'transaction amount', 'amount', 'proceeds', 'סכום הפעולה', 'סכום'],
+    fee:          ['commission', 'fees', 'fee', 'עמלה', 'עמלות'],
+    cashBalance:  ['cash balance', 'running balance', 'balance', 'יתרת מזומן', 'יתרה'],
+    holdingValue: ['market value', 'total value', 'position value', 'value', 'שווי כולל', 'שווי שוק', 'שווי נוכחי', 'שווי'],
+    pctPortfolio: ['% of portfolio', 'percent of portfolio', 'אחוז מהתיק']
+  };
+
+  const ACTION_KEYWORDS = {
+    deposit:    ['deposit', 'הפקדה'],
+    withdrawal: ['withdraw', 'משיכה'],
+    buy:        ['buy', 'purchase', 'bought', 'קניה', 'קנייה'],
+    sell:       ['sell', 'sold', 'sale', 'מכירה'],
+    dividend:   ['dividend', 'div', 'דיבידנד'],
+    fee:        ['commission', 'fee', 'עמלה'],
+    tax:        ['tax', 'withholding', 'מס'],
+    interest:   ['interest', 'ריבית'],
+    transfer:   ['transfer', 'העברה']
+  };
+  const EXCLUDE_BALANCE_KEYWORDS = ['סה"כ', 'סהכ', 'total', 'grand total', 'sum'];
+  const CASH_KEYWORDS = ['מזומן', 'cash'];
+
+  function classifyAction(actionRaw) {
+    const t = (actionRaw || '').toString().trim().toLowerCase();
+    if (!t) return 'unknown';
+    for (const [cat, kws] of Object.entries(ACTION_KEYWORDS)) {
+      for (const kw of kws) if (t.includes(kw)) return cat;
+    }
+    return 'other';
+  }
+
+  // ============================================================
+  // Parsing helpers
+  // ============================================================
+  function parseNum(v) {
+    if (v === null || v === undefined || v === '') return NaN;
+    if (typeof v === 'number') return v;
+    let s = String(v).trim();
+    if (!s || s === '-') return NaN;
+    let neg = false;
+    if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+    s = s.replace(/[,$₪€\s]/g, '').replace(/^−/, '-');
+    const n = parseFloat(s);
+    if (isNaN(n)) return NaN;
+    return neg ? -Math.abs(n) : n;
+  }
+
+  function parseDate(v) {
+    if (v instanceof Date && !isNaN(v)) return v;
+    if (typeof v === 'number') {
+      const epoch = Date.UTC(1899, 11, 30);
+      return new Date(epoch + v * 86400000);
+    }
+    if (typeof v === 'string') {
+      const s = v.trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+      m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
+      if (m) {
+        let d = +m[1], mo = +m[2], y = +m[3];
+        if (y < 100) y += 2000;
+        const dt = new Date(y, mo - 1, d);
+        if (!isNaN(dt)) return dt;
+      }
+      const dt = new Date(s);
+      if (!isNaN(dt)) return dt;
+    }
+    return null;
+  }
+
+  function findHeaderRow(rows) {
+    let best = { rowIdx: -1, colMap: {}, score: 0 };
+    const scanRows = Math.min(rows.length, 15);
+    for (let r = 0; r < scanRows; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const colMap = {};
+      row.forEach((cell, c) => {
+        if (cell === null || cell === undefined) return;
+        const text = String(cell).trim().toLowerCase();
+        if (!text) return;
+        for (const [key, syns] of Object.entries(SYN)) {
+          if (colMap[key] !== undefined) continue;
+          for (const syn of syns) {
+            if (text === syn || text.includes(syn)) { colMap[key] = c; break; }
+          }
+        }
+      });
+      const score = Object.keys(colMap).length;
+      if (score > best.score) best = { rowIdx: r, colMap, score };
+    }
+    return best;
+  }
+
+  function classifySheetType(best) {
+    if (best.score < 3) return 'unknown';
+    const hasTxCore = best.colMap.action !== undefined || best.colMap.date !== undefined;
+    if (hasTxCore) return 'transactions';
+    if (best.colMap.symbol !== undefined && (best.colMap.holdingValue !== undefined || (best.colMap.qty !== undefined && best.colMap.price !== undefined))) {
+      return 'balances';
+    }
+    return 'unknown';
+  }
+
+  function parseTransactionsSheet(rows, headerInfo) {
+    const { rowIdx, colMap } = headerInfo;
+    const txs = [];
+    for (let r = rowIdx + 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.every(c => c === null || c === undefined || c === '')) continue;
+      const get = (key) => colMap[key] !== undefined ? row[colMap[key]] : undefined;
+      const date = parseDate(get('date'));
+      const actionRaw = get('action') !== undefined ? String(get('action')).trim() : '';
+      const symbol = get('symbol') !== undefined ? String(get('symbol')).trim() : '';
+      const qty = parseNum(get('qty'));
+      const price = parseNum(get('price'));
+      const amount = parseNum(get('amount'));
+      const fee = parseNum(get('fee'));
+      if (!date && !actionRaw && isNaN(amount)) continue;
+      txs.push({
+        date, actionRaw, symbol,
+        qty: isNaN(qty) ? null : qty,
+        price: isNaN(price) ? null : price,
+        amount: isNaN(amount) ? null : amount,
+        fee: isNaN(fee) ? 0 : Math.abs(fee)
+      });
+    }
+    return txs;
+  }
+
+  function parseBalancesSheet(rows, headerInfo) {
+    const { rowIdx, colMap } = headerInfo;
+    const items = [];
+    for (let r = rowIdx + 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.every(c => c === null || c === undefined || c === '')) continue;
+      const get = (key) => colMap[key] !== undefined ? row[colMap[key]] : undefined;
+      let symbol = get('symbol') !== undefined ? String(get('symbol')).trim() : '';
+      if (!symbol) continue;
+      const symLower = symbol.toLowerCase();
+      if (EXCLUDE_BALANCE_KEYWORDS.some(kw => symLower.includes(kw.toLowerCase()))) continue;
+      const qty = parseNum(get('qty'));
+      const price = parseNum(get('price'));
+      let value = parseNum(get('holdingValue'));
+      if (isNaN(value) && !isNaN(qty) && !isNaN(price)) value = qty * price;
+      if (isNaN(value)) continue;
+      const isCash = CASH_KEYWORDS.some(kw => symLower.includes(kw));
+      items.push({ symbol: isCash ? 'מזומן' : symbol, qty: isNaN(qty) ? null : qty, price: isNaN(price) ? null : price, value, isCash });
+    }
+    return items;
+  }
+
+  // ============================================================
+  // FIFO realized P/L engine
+  // ============================================================
+  function computeFIFO(txs) {
+    const lotsBySymbol = {};
+    const sellTrades = [];
+    const warnings = [];
+    const sorted = txs.filter(t => t.date).slice().sort((a, b) => a.date - b.date);
+
+    for (const t of sorted) {
+      const cat = classifyAction(t.actionRaw);
+      if (cat === 'buy' && t.symbol && t.qty > 0) {
+        const price = t.price != null ? t.price : (t.amount != null && t.qty ? Math.abs(t.amount) / t.qty : 0);
+        (lotsBySymbol[t.symbol] = lotsBySymbol[t.symbol] || []).push({ qty: t.qty, price, date: t.date });
+      } else if (cat === 'sell' && t.symbol && t.qty > 0) {
+        const price = t.price != null ? t.price : (t.amount != null && t.qty ? Math.abs(t.amount) / t.qty : 0);
+        let remaining = t.qty, gain = 0, cost = 0, wdays = 0;
+        const lots = lotsBySymbol[t.symbol] || [];
+        while (remaining > 1e-9 && lots.length) {
+          const lot = lots[0];
+          const take = Math.min(lot.qty, remaining);
+          gain += (price - lot.price) * take;
+          cost += lot.price * take;
+          wdays += ((t.date - lot.date) / 86400000) * take;
+          lot.qty -= take;
+          remaining -= take;
+          if (lot.qty <= 1e-9) lots.shift();
+        }
+        if (remaining > 1e-4) {
+          warnings.push(`${t.symbol}: נמכרו ${remaining.toFixed(2)} יחידות יותר ממה שנרשם כנקנה (בתאריך ${t.date.toISOString().slice(0,10)}) — ייתכן ומדובר בפיצול מניה, העברה מברוקר אחר, או נתון היסטורי חסר. החלק העודף לא נכלל בחישובי התשואה.`);
+        }
+        const matchedQty = t.qty - remaining;
+        if (matchedQty > 1e-9) {
+          sellTrades.push({ year: t.date.getFullYear(), symbol: t.symbol, gain, cost, qty: matchedQty, holdDaysWeighted: wdays });
+        }
+      }
+    }
+
+    const openPositions = {};
+    for (const [sym, lots] of Object.entries(lotsBySymbol)) {
+      const qty = lots.reduce((s, l) => s + l.qty, 0);
+      if (qty > 1e-6) openPositions[sym] = qty;
+    }
+    return { sellTrades, warnings, openPositions };
+  }
+
+  // ============================================================
+  // Aggregation
+  // ============================================================
+  function aggregateYearly(txs, sellTrades) {
+    const years = {};
+    const y = (year) => years[year] = years[year] || { year, deposits: 0, withdrawals: 0, dividends: 0, fees: 0, tax: 0, realizedPL: 0, cost: 0, trades: 0, wins: 0, holdDaysWeighted: 0, holdQty: 0 };
+    for (const t of txs) {
+      if (!t.date) continue;
+      const cat = classifyAction(t.actionRaw);
+      const yr = y(t.date.getFullYear());
+      const amt = t.amount || 0;
+      if (cat === 'deposit') yr.deposits += Math.abs(amt);
+      else if (cat === 'withdrawal') yr.withdrawals += Math.abs(amt);
+      else if (cat === 'dividend') yr.dividends += amt;
+      else if (cat === 'tax') yr.tax += amt;
+      else if (cat === 'fee') yr.fees += Math.abs(amt);
+      if (t.fee) yr.fees += Math.abs(t.fee);
+    }
+    for (const st of sellTrades) {
+      const yr = y(st.year);
+      yr.realizedPL += st.gain;
+      yr.cost += st.cost;
+      yr.trades += 1;
+      if (st.gain > 0) yr.wins += 1;
+      yr.holdDaysWeighted += st.holdDaysWeighted;
+      yr.holdQty += st.qty;
+    }
+    const result = Object.values(years).sort((a, b) => a.year - b.year);
+    result.forEach(yr => {
+      yr.avgHoldDaysDisplay = yr.holdQty > 0 ? (yr.holdDaysWeighted / yr.holdQty).toFixed(1) + ' ימים' : null;
+    });
+    return result;
+  }
+
+  function aggregateSymbolYear(sellTrades) {
+    const map = {}; // year -> symbol -> {gain, cost}
+    for (const st of sellTrades) {
+      map[st.year] = map[st.year] || {};
+      const e = map[st.year][st.symbol] = map[st.year][st.symbol] || { gain: 0, cost: 0 };
+      e.gain += st.gain;
+      e.cost += st.cost;
+    }
+    return map;
+  }
+
+  function computeTotals(txs, sellTrades, balances, openPositions) {
+    let deposits = 0, withdrawals = 0, dividends = 0, fees = 0, tax = 0;
+    for (const t of txs) {
+      const cat = classifyAction(t.actionRaw);
+      const amt = t.amount || 0;
+      if (cat === 'deposit') deposits += Math.abs(amt);
+      else if (cat === 'withdrawal') withdrawals += Math.abs(amt);
+      else if (cat === 'dividend') dividends += amt;
+      else if (cat === 'tax') tax += amt;
+      else if (cat === 'fee') fees += Math.abs(amt);
+      if (t.fee) fees += Math.abs(t.fee);
+    }
+    const netCashInvested = deposits - withdrawals;
+    const realizedPL = sellTrades.reduce((s, t) => s + t.gain, 0);
+    const hasOpenPositions = Object.keys(openPositions).length > 0;
+
+    let portfolioValue = null;
+    if (balances && balances.length) {
+      portfolioValue = balances.reduce((s, b) => s + (isFinite(b.value) ? b.value : 0), 0);
+    }
+
+    let netProfit = null, roi = null, basis;
+    if (portfolioValue !== null) {
+      netProfit = portfolioValue - netCashInvested;
+      roi = netCashInvested !== 0 ? (netProfit / netCashInvested * 100) : null;
+      basis = 'full';
+    } else if (!hasOpenPositions) {
+      netProfit = realizedPL + dividends - fees + tax; // tax accumulates signed: charges negative, credits positive
+      roi = netCashInvested !== 0 ? (netProfit / netCashInvested * 100) : null;
+      portfolioValue = netCashInvested + netProfit; // no open positions -> this is just the ending cash balance
+      basis = 'realized-full';
+    } else {
+      basis = 'realized-only';
+    }
+
+    return { deposits, withdrawals, netCashInvested, dividends, fees, tax, realizedPL, portfolioValue, netProfit, roi, basis, hasOpenPositions };
+  }
+
+  // ============================================================
+  // Color helpers (dynamic per-year palette, interpolated between
+  // the three brand accents so it works for any number of years)
+  // ============================================================
+  function hexToRgb(hex) {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const n = parseInt(hex, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function rgbToHex([r, g, b]) {
+    return '#' + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  }
+  function lerpRgb(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+
+  function yearPalette(n) {
+    const cs = getComputedStyle(root);
+    const stops = ['--accent-slate', '--accent-navy', '--accent-gold'].map(v => hexToRgb(cs.getPropertyValue(v).trim()));
+    if (n <= 1) return [rgbToHex(stops[1])];
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1) * 2;
+      const seg = Math.min(Math.floor(t), 1);
+      const localT = t - seg;
+      out.push(rgbToHex(lerpRgb(stops[seg], stops[seg + 1], localT)));
+    }
+    return out;
+  }
+
+  const ALLOC_SHADES = ['#3a5f8a', '#b8903a', '#2f9484', '#c05f3c', '#7462ad', '#8a9432', '#ab5f78'];
+  const CASH_COLOR = '#9aa3b0';
+
+  // ============================================================
+  // Formatting
+  // ============================================================
+  const CURRENCY = '$';
+  function fmtMoney(v) { const s = (v < 0 ? '-' : '') + CURRENCY + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return s; }
+  function fmtMoneySigned(v) { return (v >= 0 ? '+' : '-') + CURRENCY + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtPct(v) { return (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(1) + '%'; }
+
+  // ============================================================
+  // Rendering
+  // ============================================================
+  let state = null;
+
+  function setUploadStatus(msg, kind) {
+    const el = document.getElementById('uploadStatus');
+    if (!msg) { el.className = ''; el.textContent = ''; return; }
+    el.textContent = msg;
+    el.className = 'show ' + (kind || 'info');
+  }
+
+  function computeAll(txs, balances) {
+    const fifo = computeFIFO(txs);
+    const yearly = aggregateYearly(txs, fifo.sellTrades);
+    const symYear = aggregateSymbolYear(fifo.sellTrades);
+    const totals = computeTotals(txs, fifo.sellTrades, balances, fifo.openPositions);
+    return { txs, balances, fifo, yearly, symYear, totals };
+  }
+
+  function render(s) {
+    state = s;
+    const { txs, balances, fifo, yearly, symYear, totals } = s;
+    const years = yearly.map(y => y.year);
+    const palette = yearPalette(Math.max(years.length, 1));
+    const colorOf = (year) => palette[years.indexOf(year)] || palette[0];
+
+    // Meta line
+    const symbols = new Set(txs.filter(t => t.symbol).map(t => t.symbol));
+    const dates = txs.filter(t => t.date).map(t => t.date);
+    const minD = dates.length ? new Date(Math.min(...dates)) : null;
+    const maxD = dates.length ? new Date(Math.max(...dates)) : null;
+    const fmtD = (d) => d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    document.getElementById('metaLine').textContent = minD ?
+      `${txs.length} תנועות · תקופה: ${fmtD(minD)}–${fmtD(maxD)} · ${symbols.size} ניירות · מטבע: ${CURRENCY}` :
+      'לא נמצאו תנועות בקובץ';
+
+    // Stat cards
+    document.getElementById('statInvested').textContent = fmtMoney(totals.netCashInvested);
+
+    const valEl = document.getElementById('statValue');
+    const valSub = document.getElementById('statValueSub');
+    if (totals.portfolioValue !== null) {
+      valEl.textContent = fmtMoney(totals.portfolioValue);
+      valEl.className = 'stat-value';
+      valSub.textContent = totals.basis === 'full' ? 'לפי קובץ היתרות שהועלה' : 'כל הפוזיציות נסגרו — יתרת מזומן סופית';
+    } else {
+      valEl.innerHTML = 'העלה קובץ יתרות';
+      valEl.className = 'stat-value na';
+      valSub.textContent = 'כדי לראות שווי תיק מלא';
+    }
+
+    const profitEl = document.getElementById('statProfit');
+    const profitSub = document.getElementById('statProfitSub');
+    if (totals.netProfit !== null) {
+      profitEl.textContent = fmtMoneySigned(totals.netProfit);
+      profitEl.className = 'stat-value ' + (totals.netProfit >= 0 ? 'good' : 'bad');
+      profitSub.textContent = totals.basis === 'realized-only' ? 'עסקאות ממומשות בלבד' : '';
+    } else {
+      profitEl.textContent = fmtMoneySigned(totals.realizedPL) + ' (ממומש)';
+      profitEl.className = 'stat-value na';
+      profitSub.textContent = 'פוזיציות פתוחות לא מתומחרות';
+    }
+
+    const roiEl = document.getElementById('statRoi');
+    const roiSub = document.getElementById('statRoiSub');
+    if (totals.roi !== null) {
+      roiEl.textContent = fmtPct(totals.roi);
+      roiEl.className = 'stat-value ' + (totals.roi >= 0 ? 'good' : 'bad');
+      roiSub.textContent = totals.basis === 'realized-only' ? 'עסקאות ממומשות בלבד' : 'רווח נטו ביחס להפקדות נטו';
+    } else {
+      roiEl.textContent = '—';
+      roiEl.className = 'stat-value na';
+      roiSub.textContent = '';
+    }
+
+    // Legend
+    const legendHost = document.getElementById('yearLegend');
+    legendHost.innerHTML = years.map((y, i) => `<span class="legend-item"><span class="legend-dot" style="background:${palette[i]}"></span>${y}</span>`).join('');
+
+    // Charts
+    renderBarChart('chart-value', yearly.map(y => ({
+      label: String(y.year), value: y.realizedPL, color: y.realizedPL >= 0 ? 'var(--good)' : 'var(--critical)'
+    })), v => fmtMoneySigned(v));
+
+    renderBarChart('chart-return', yearly.map(y => {
+      const pct = y.cost > 0 ? (y.realizedPL / y.cost * 100) : 0;
+      return { label: String(y.year), value: pct, color: pct >= 0 ? 'var(--good)' : 'var(--critical)' };
+    }), v => fmtPct(v));
+
+    // Yearly table
+    const tbody = document.getElementById('yearlyTableBody');
+    if (!yearly.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-note">אין נתונים</td></tr>';
+    } else {
+      tbody.innerHTML = yearly.map(y => {
+        const netFlow = y.deposits - y.withdrawals;
+        const feesTaxCost = y.fees + Math.max(-y.tax, 0);
+        const returnOnTrades = y.cost > 0 ? (y.realizedPL / y.cost * 100) : null;
+        return `<tr>
+          <td>${y.year}</td>
+          <td class="num ${netFlow >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(netFlow)}</td>
+          <td class="num ${y.realizedPL >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(y.realizedPL)}</td>
+          <td class="num">${fmtMoney(y.dividends)}</td>
+          <td class="num negative">${fmtMoneySigned(-feesTaxCost)}</td>
+          <td class="num ${returnOnTrades === null ? '' : (returnOnTrades >= 0 ? 'positive' : 'negative')}">${returnOnTrades === null ? '—' : fmtPct(returnOnTrades)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    renderTopWorstGrids(symYear, years, colorOf);
+    renderEfficiencyTable(yearly);
+    renderAllocation(balances);
+    renderInsights(totals, yearly, fifo, colorOf);
+    renderWarnings(fifo, totals, txs);
+  }
+
+  function rankSymbolYear(symYear, year, dir) {
+    const entries = symYear[year] || {};
+    const rows = Object.entries(entries)
+      .filter(([, e]) => e.cost > 1e-6)
+      .map(([symbol, e]) => ({ symbol, pct: e.gain / e.cost * 100, gain: e.gain }));
+    rows.sort((a, b) => dir === 'best' ? b.pct - a.pct : a.pct - b.pct);
+    return rows.slice(0, 5);
+  }
+
+  function renderTopWorstGrids(symYear, years, colorOf) {
+    const top5Host = document.getElementById('top5Host');
+    const worst5Host = document.getElementById('worst5Host');
+    if (!years.length) {
+      top5Host.innerHTML = '<div class="empty-note">אין נתונים</div>';
+      worst5Host.innerHTML = '<div class="empty-note">אין נתונים</div>';
+      return;
+    }
+    function block(year, dir, color) {
+      const rows = rankSymbolYear(symYear, year, dir);
+      const gainLabel = dir === 'best' ? 'רווח' : 'הפסד';
+      const rowsHtml = rows.length ? rows.map((r, i) => `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td class="sym">${r.symbol}</td>
+          <td class="num ${r.pct >= 0 ? 'positive' : 'negative'}">${fmtPct(r.pct)}</td>
+          <td class="num ${r.gain >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(r.gain)}</td>
+        </tr>`).join('') : `<tr><td colspan="4" class="empty-note">אין עסקאות סגורות בשנה זו</td></tr>`;
+      return `
+        <div>
+          <h3><span class="legend-dot" style="background:${color}"></span>${year}</h3>
+          <table>
+            <thead><tr><th>#</th><th>נייר</th><th class="num">תשואה</th><th class="num">${gainLabel}</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+    }
+    top5Host.innerHTML = years.map(y => block(y, 'best', colorOf(y))).join('');
+    worst5Host.innerHTML = years.map(y => block(y, 'worst', colorOf(y))).join('');
+  }
+
+  function renderEfficiencyTable(yearly) {
+    const tbody = document.getElementById('efficiencyTableBody');
+    if (!yearly.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-note">אין נתונים</td></tr>'; return; }
+    tbody.innerHTML = yearly.map(y => {
+      const winRate = y.trades ? (y.wins / y.trades * 100) : null;
+      return `<tr>
+        <td class="label-cell">${y.year}</td>
+        <td class="num">${y.trades}</td>
+        <td class="num ${winRate === null ? '' : (winRate >= 50 ? 'positive' : '')}">${winRate === null ? '—' : winRate.toFixed(1) + '%'}</td>
+        <td class="num">${y.avgHoldDaysDisplay || '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderAllocation(balances) {
+    const grid = document.getElementById('allocGrid');
+    const emptyNote = document.getElementById('allocEmptyNote');
+    const subtitle = document.getElementById('allocSubtitle');
+    if (!balances || !balances.length) {
+      grid.style.display = 'none';
+      emptyNote.style.display = 'block';
+      emptyNote.textContent = 'לא הועלה קובץ יתרות — השתמש בכפתור "העלאת קובץ נתונים" והעלה קובץ עם גיליון יתרות/החזקות כדי לראות את הרכב התיק.';
+      subtitle.textContent = '';
+      return;
+    }
+    grid.style.display = '';
+    emptyNote.style.display = 'none';
+    subtitle.textContent = 'לפי קובץ היתרות שהועלה';
+
+    const total = balances.reduce((s, b) => s + b.value, 0);
+    const nonCash = balances.filter(b => !b.isCash).sort((a, b) => b.value - a.value);
+    const cash = balances.filter(b => b.isCash);
+    const maxSlots = ALLOC_SHADES.length;
+    let top = nonCash.slice(0, maxSlots);
+    const rest = nonCash.slice(maxSlots);
+    if (rest.length) {
+      top.push({ symbol: 'אחר', value: rest.reduce((s, b) => s + b.value, 0), qty: null, price: null, isCash: false, isOther: true });
+    }
+    const items = top.map((b, i) => ({ ...b, color: ALLOC_SHADES[i % ALLOC_SHADES.length] }))
+      .concat(cash.map(b => ({ ...b, color: CASH_COLOR })));
+
+    const data = items.map(b => ({ label: b.symbol, value: b.value, pct: total ? b.value / total * 100 : 0, color: b.color }));
+    renderDonutChart('chart-allocation', data);
+    document.getElementById('allocCenterVal').textContent = fmtMoney(total);
+
+    document.getElementById('allocLegendBody').innerHTML = items.map(b => `
+      <tr>
+        <td><span class="swatch" style="background:${b.color}"></span><span class="name">${b.symbol}</span></td>
+        <td class="num pct">${(total ? b.value / total * 100 : 0).toFixed(1)}%</td>
+        <td class="num">${fmtMoney(b.value)}</td>
+      </tr>`).join('');
+  }
+
+  function renderInsights(totals, yearly, fifo, colorOf) {
+    const host = document.getElementById('insightsHost');
+    if (!yearly.length) { host.innerHTML = '<div class="empty-note">אין נתונים</div>'; return; }
+
+    const byProfit = yearly.slice().sort((a, b) => b.realizedPL - a.realizedPL);
+    const bestProfitYear = byProfit[0];
+    const worstYear = byProfit[byProfit.length - 1];
+    const byReturn = yearly.slice().filter(y => y.cost > 0).sort((a, b) => (b.realizedPL / b.cost) - (a.realizedPL / a.cost));
+    const bestReturnYear = byReturn[0];
+
+    const totalTrades = yearly.reduce((s, y) => s + y.trades, 0);
+    const symbols = new Set();
+    Object.values(fifo.openPositions).forEach(() => {});
+    const openList = Object.keys(fifo.openPositions);
+
+    const cards = [
+      {
+        k: 'השנה המובילה מבחינת רווח ממומש',
+        v: `${bestProfitYear.year} &ndash; ${fmtMoney(bestProfitYear.realizedPL)}`,
+        color: colorOf(bestProfitYear.year)
+      },
+      bestReturnYear ? {
+        k: 'השנה המובילה מבחינת תשואה על עסקאות',
+        v: `${bestReturnYear.year} &ndash; ${fmtPct(bestReturnYear.realizedPL / bestReturnYear.cost * 100)}`,
+        color: colorOf(bestReturnYear.year)
+      } : null,
+      {
+        k: 'התקופה החלשה ביותר (רווח ממומש)',
+        v: `${worstYear.year} &ndash; ${fmtMoneySigned(worstYear.realizedPL)}`,
+        color: colorOf(worstYear.year)
+      },
+      {
+        k: 'סך הדיבידנדים שנאספו',
+        v: fmtMoney(totals.dividends)
+      },
+      {
+        k: 'סך המס שנוכה (נטו)',
+        v: fmtMoney(Math.abs(totals.tax)),
+        color: 'var(--critical)'
+      },
+      {
+        k: 'סך העמלות ששולמו',
+        v: fmtMoney(totals.fees)
+      },
+      {
+        k: 'פעילות מסחר',
+        v: `${totalTrades} עסקאות סגורות`
+      },
+      {
+        k: 'פוזיציות פתוחות נוכחיות',
+        v: openList.length ? openList.join(', ') : 'אין'
+      }
+    ].filter(Boolean);
+
+    host.innerHTML = cards.map(c => `
+      <div class="insight-card" ${c.color ? `style="border-right-color:${c.color}"` : ''}>
+        <div class="k">${c.k}</div>
+        <div class="v">${c.v}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
+      </div>`).join('');
+  }
+
+  function renderWarnings(fifo, totals, txs) {
+    const host = document.getElementById('warningsHost');
+    const blocks = [];
+
+    if (totals.basis === 'realized-only') {
+      const openList = Object.keys(fifo.openPositions).join(', ');
+      blocks.push(`
+        <div class="note warn" style="margin-bottom:12px;">
+          <strong>שווי התיק אינו זמין.</strong> קיימות פוזיציות פתוחות (${openList}) אך לא הועלה קובץ יתרות/החזקות נוכחי,
+          ולכן לא ניתן להציג שווי תיק כולל או תשואה מדויקת. השתמש בכפתור "העלאת קובץ נתונים" והעלה קובץ שמכיל גם גיליון
+          יתרות (סמל, כמות, מחיר/שווי) &ndash; עד אז, המספרים למעלה משקפים רק עסקאות <strong>שנסגרו בפועל</strong>.
+        </div>`);
+    }
+
+    if (fifo.warnings.length) {
+      blocks.push(`
+        <div class="note" style="margin-bottom:12px;">
+          <strong>${fifo.warnings.length} חריגות בנתונים זוהו:</strong>
+          <ul>${fifo.warnings.slice(0, 8).map(w => `<li>${w}</li>`).join('')}</ul>
+        </div>`);
+    }
+
+    const unclassified = new Set();
+    txs.forEach(t => { if (classifyAction(t.actionRaw) === 'other' && t.actionRaw) unclassified.add(t.actionRaw); });
+    if (unclassified.size) {
+      blocks.push(`
+        <div class="note">
+          <strong>${unclassified.size} סוגי פעולה לא זוהו</strong> ולא נכללו בחישובי ההפקדות/משיכות/דיבידנדים/מס:
+          ${Array.from(unclassified).slice(0, 15).join(', ')}.
+        </div>`);
+    }
+
+    if (!blocks.length) {
+      blocks.push(`<div class="note">לא זוהו חריגות בנתונים.</div>`);
+    }
+
+    host.innerHTML = blocks.join('');
+  }
+
+  // ============================================================
+  // File reading & upload wiring
+  // ============================================================
+  function readFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'csv') {
+      return new Promise((resolve, reject) => {
+        Papa.parse(file, { complete: (res) => resolve([{ name: file.name, rows: res.data }]), error: reject });
+      });
+    }
+    return file.arrayBuffer().then(buf => {
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      return wb.SheetNames.map(name => ({
+        name,
+        rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, dateNF: 'yyyy-mm-dd' })
+      }));
+    });
+  }
+
+  function processSheets(sheets) {
+    let txs = [], balances = [], unknownSheets = [];
+    for (const sheet of sheets) {
+      const header = findHeaderRow(sheet.rows);
+      const type = classifySheetType(header);
+      if (type === 'transactions') txs = txs.concat(parseTransactionsSheet(sheet.rows, header));
+      else if (type === 'balances') balances = balances.concat(parseBalancesSheet(sheet.rows, header));
+      else unknownSheets.push(sheet.name);
+    }
+    return { txs, balances, unknownSheets };
+  }
+
+  let currentUserName = '';
+
+  function loadFromSheets(sheets, label) {
+    setUploadStatus('קורא ומעבד את הקובץ…', 'info');
+    try {
+      const { txs, balances, unknownSheets } = processSheets(sheets);
+      if (!txs.length && !balances.length) {
+        setUploadStatus('לא נמצאו עמודות מוכרות של תנועות או יתרות בקובץ הזה. ודא שיש כותרות כמו תאריך/סוג פעולה/נייר/סכום (או Date/Action/Symbol/Amount).', 'err');
+        return;
+      }
+      const computed = computeAll(txs, balances);
+      render(computed);
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('dashboardSections').style.display = 'block';
+      document.getElementById('mainTitle').textContent = currentUserName ? `דוח ביצועי חשבון מסחר – ${currentUserName}` : 'דוח ביצועי חשבון מסחר';
+      let msg = label ? `הדוח מציג את הנתונים מהקובץ: ${label}` : '';
+      if (unknownSheets.length) msg += (msg ? ' · ' : '') + `${unknownSheets.length} גיליון/ות לא זוהו ודולגו: ${unknownSheets.join(', ')}`;
+      setUploadStatus(msg, 'info');
+    } catch (err) {
+      console.error(err);
+      setUploadStatus('שגיאה בעיבוד הקובץ: ' + err.message, 'err');
+    }
+  }
+
+  const uploadBtn = document.getElementById('uploadBtn');
+  const emptyStateUploadBtn = document.getElementById('emptyStateUploadBtn');
+  const fileInput = document.getElementById('fileInput');
+  const nameInput = document.getElementById('userName');
+
+  function attemptUpload() {
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.classList.add('invalid');
+      nameInput.focus();
+      setUploadStatus('נא להזין שם מלא לפני העלאת הקובץ.', 'err');
+      return;
+    }
+    nameInput.classList.remove('invalid');
+    currentUserName = name;
+    fileInput.click();
+  }
+
+  uploadBtn.addEventListener('click', attemptUpload);
+  emptyStateUploadBtn.addEventListener('click', attemptUpload);
+  nameInput.addEventListener('input', () => nameInput.classList.remove('invalid'));
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    readFile(file).then(sheets => loadFromSheets(sheets, file.name))
+      .catch(err => setUploadStatus('שגיאה בקריאת הקובץ: ' + err.message, 'err'));
+    fileInput.value = '';
+  });
+})();
+</script>
+</body>
+</html>
