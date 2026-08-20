@@ -6,12 +6,15 @@
 <title>דוח ביצועי חשבון מסחר שלך</title>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=David+Libre:wght@500;700&family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { color-scheme: light; }
 
   .viz-root {
     --surface-1:      #ffffff;
-    --page-plane:     #f3f4f6;
+    --page-plane:     linear-gradient(160deg, #eef0f3 0%, #dde1e6 55%, #e6e9ed 100%);
     --text-primary:   #14202e;
     --text-secondary: #4a5568;
     --text-muted:     #8592a3;
@@ -68,7 +71,7 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", "Arial Hebrew", sans-serif;
+    font-family: 'Heebo', system-ui, -apple-system, "Segoe UI", "Arial Hebrew", sans-serif;
   }
   .viz-root {
     padding: 32px 20px 80px;
@@ -92,7 +95,7 @@
     margin-bottom: 22px;
     background: linear-gradient(90deg, var(--accent-navy) 0%, var(--accent-navy) 70%, var(--accent-gold) 100%);
   }
-  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h1 { font-family: 'David Libre', Georgia, "Times New Roman", David, serif; font-size: 27px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.005em; }
   .meta { color: var(--text-secondary); font-size: 14px; margin: 0; }
   .theme-toggle {
     border: 1px solid var(--border);
@@ -158,7 +161,9 @@
     font-weight: 700;
   }
   h3 {
+    font-family: 'David Libre', Georgia, "Times New Roman", David, serif;
     font-size: 16px;
+    font-weight: 700;
     margin: 0 0 4px;
     color: var(--text-primary);
   }
