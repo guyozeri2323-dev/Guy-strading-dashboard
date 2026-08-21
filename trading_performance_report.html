@@ -302,7 +302,7 @@
     font-variant-numeric: tabular-nums;
   }
   tbody tr:last-child td { border-bottom: none; }
-  tbody tr.total-row td { font-weight: 700; background: color-mix(in srgb, var(--accent-navy) 6%, transparent); }
+  tbody tr.total-row td { font-weight: 700; background: color-mix(in srgb, var(--accent-navy) 6%, transparent); border-top: 2px solid var(--text-primary); }
   td.positive { color: var(--good-text); font-weight: 600; }
   td.negative { color: var(--critical); font-weight: 600; }
   td.label-cell { color: var(--text-secondary); }
@@ -493,6 +493,27 @@
       </div>
     </section>
 
+    <!-- 3. Yearly summary table -->
+    <section>
+      <h2>סיכום שנתי</h2>
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>שנה</th>
+            <th class="num">תזרים מזומנים נטו</th>
+            <th class="num">רווח ממומש ($)</th>
+            <th class="num">דיבידנדים וריבית</th>
+            <th class="num">עמלות</th>
+            <th class="num">מס</th>
+            <th class="num">תשואה על עסקאות</th>
+          </tr>
+        </thead>
+        <tbody id="yearlyTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
     <!-- 2. Charts -->
     <section>
       <h2>תמונת מצב שנתית</h2>
@@ -508,26 +529,6 @@
           <p class="meta" style="margin-bottom:14px;">רווח ממומש ביחס לעלות הבסיס, לפי שנה</p>
           <div class="chart-wrap" id="chart-return"></div>
         </div>
-      </div>
-    </section>
-
-    <!-- 3. Yearly summary table -->
-    <section>
-      <h2>סיכום שנתי</h2>
-      <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>שנה</th>
-            <th class="num">תזרים מזומנים נטו</th>
-            <th class="num">רווח ממומש ($)</th>
-            <th class="num">דיבידנדים</th>
-            <th class="num">עמלות ומס</th>
-            <th class="num">תשואה על עסקאות</th>
-          </tr>
-        </thead>
-        <tbody id="yearlyTableBody"></tbody>
-      </table>
       </div>
     </section>
 
@@ -938,23 +939,303 @@
   }
 
   // ============================================================
+  // Interactive Brokers "Activity Statement" support — most
+  // Israeli brokers (Bluelink, Meitav, IBI, etc.) route trades
+  // through IBKR, whose exported statements use a section format:
+  // each row is "SectionName,Header|Data,field1,field2,...".
+  // ============================================================
+  function detectIBKRFormat(rows) {
+    let hits = 0, scanned = 0;
+    for (const row of rows) {
+      if (!row || row.length < 2) continue;
+      const marker = String(row[1] || '').trim();
+      if (marker === 'Header' || marker === 'Data') hits++;
+      scanned++;
+      if (scanned > 300) break;
+    }
+    return hits >= 8;
+  }
+
+  function ibkrColIndex(header, synonyms) {
+    const lower = header.map(h => String(h || '').trim().toLowerCase());
+    for (const syn of synonyms) {
+      const idx = lower.indexOf(syn);
+      if (idx !== -1) return idx;
+    }
+    for (let i = 0; i < lower.length; i++) {
+      for (const syn of synonyms) {
+        if (lower[i] && lower[i].includes(syn)) return i;
+      }
+    }
+    return -1;
+  }
+
+  function splitIBKRSections(rows) {
+    const sections = {};
+    for (const row of rows) {
+      if (!row || row.length < 3) continue;
+      const name = String(row[0] || '').trim();
+      const marker = String(row[1] || '').trim();
+      if (!name) continue;
+      const fields = row.slice(2);
+      if (marker === 'Header') {
+        sections[name] = sections[name] || {};
+        sections[name].header = fields;
+      } else if (marker === 'Data') {
+        sections[name] = sections[name] || {};
+        (sections[name].rows = sections[name].rows || []).push(fields);
+      }
+    }
+    return sections;
+  }
+
+  function parseIBKRSections(rows) {
+    const sections = splitIBKRSections(rows);
+    const txs = [];
+    const balances = [];
+
+    const trades = sections['Trades'];
+    if (trades && trades.header && trades.rows) {
+      const h = trades.header;
+      const iSymbol = ibkrColIndex(h, ['symbol']);
+      const iDate = ibkrColIndex(h, ['date/time', 'date']);
+      const iQty = ibkrColIndex(h, ['quantity']);
+      const iPrice = ibkrColIndex(h, ['t. price', 'trade price', 'price']);
+      const iProceeds = ibkrColIndex(h, ['proceeds']);
+      const iFee = ibkrColIndex(h, ['comm/fee', 'commission', 'comm in usd', 'comm']);
+      const iDiscriminator = ibkrColIndex(h, ['datadiscriminator']);
+      const iAssetCat = ibkrColIndex(h, ['asset category']);
+
+      trades.rows.forEach(row => {
+        if (iDiscriminator !== -1) {
+          const disc = String(row[iDiscriminator] || '').trim().toLowerCase();
+          if (disc && disc !== 'order' && disc !== 'trade') return; // skip SubTotal/Total rows
+        }
+        if (iAssetCat !== -1) {
+          const cat = String(row[iAssetCat] || '').trim().toLowerCase();
+          if (cat && /forex|option|future|cfd|warrant/.test(cat)) return; // skip non-simple-equity instruments
+        }
+        const symbol = iSymbol !== -1 ? String(row[iSymbol] || '').trim() : '';
+        const qtyRaw = iQty !== -1 ? parseNum(row[iQty]) : NaN;
+        if (!symbol || isNaN(qtyRaw) || qtyRaw === 0) return;
+        const date = iDate !== -1 ? parseDate(row[iDate]) : null;
+        const price = iPrice !== -1 ? parseNum(row[iPrice]) : NaN;
+        const proceeds = iProceeds !== -1 ? parseNum(row[iProceeds]) : NaN;
+        const fee = iFee !== -1 ? parseNum(row[iFee]) : NaN;
+        txs.push({
+          date, symbol,
+          actionRaw: qtyRaw > 0 ? 'קניה' : 'מכירה',
+          qty: Math.abs(qtyRaw),
+          price: isNaN(price) ? null : price,
+          amount: isNaN(proceeds) ? null : proceeds,
+          fee: isNaN(fee) ? 0 : Math.abs(fee)
+        });
+      });
+    }
+
+    const cashSections = [
+      { names: ['Deposits & Withdrawals', 'Deposits/Withdrawals'], mode: 'depwd' },
+      { names: ['Dividends'], mode: 'dividend' },
+      { names: ['Withholding Tax'], mode: 'tax' },
+      { names: ['Interest', 'Broker Interest Paid', 'Broker Interest Received'], mode: 'dividend' },
+      { names: ['Fees', 'Other Fees'], mode: 'fee' }
+    ];
+    cashSections.forEach(({ names, mode }) => {
+      names.forEach(name => {
+        const sec = sections[name];
+        if (!sec || !sec.header || !sec.rows) return;
+        const h = sec.header;
+        const iDate = ibkrColIndex(h, ['settle date', 'date']);
+        const iAmount = ibkrColIndex(h, ['amount']);
+        const iDesc = ibkrColIndex(h, ['description']);
+        sec.rows.forEach(row => {
+          const desc = iDesc !== -1 ? String(row[iDesc] || '').trim().toLowerCase() : '';
+          if (desc === 'total' || desc.startsWith('total')) return;
+          const date = iDate !== -1 ? parseDate(row[iDate]) : null;
+          const amount = iAmount !== -1 ? parseNum(row[iAmount]) : NaN;
+          if (isNaN(amount)) return;
+          let actionRaw;
+          if (mode === 'depwd') actionRaw = amount >= 0 ? 'הפקדה' : 'משיכה';
+          else if (mode === 'dividend') actionRaw = 'דיבידנד';
+          else if (mode === 'tax') actionRaw = 'מס';
+          else if (mode === 'fee') actionRaw = 'עמלה';
+          txs.push({ date, symbol: '', actionRaw, qty: null, price: null, amount, fee: 0 });
+        });
+      });
+    });
+
+    const posSection = sections['Open Positions'];
+    if (posSection && posSection.header && posSection.rows) {
+      const h = posSection.header;
+      const iSymbol = ibkrColIndex(h, ['symbol']);
+      const iQty = ibkrColIndex(h, ['quantity']);
+      const iClose = ibkrColIndex(h, ['close price']);
+      const iValue = ibkrColIndex(h, ['value']);
+      posSection.rows.forEach(row => {
+        const symbol = iSymbol !== -1 ? String(row[iSymbol] || '').trim() : '';
+        if (!symbol) return;
+        const qty = iQty !== -1 ? parseNum(row[iQty]) : NaN;
+        const price = iClose !== -1 ? parseNum(row[iClose]) : NaN;
+        let value = iValue !== -1 ? parseNum(row[iValue]) : NaN;
+        if (isNaN(value) && !isNaN(qty) && !isNaN(price)) value = qty * price;
+        if (isNaN(value)) return;
+        balances.push({ symbol, qty: isNaN(qty) ? null : qty, price: isNaN(price) ? null : price, value, isCash: false });
+      });
+    }
+
+    const cashReport = sections['Cash Report'];
+    if (cashReport && cashReport.header && cashReport.rows) {
+      const h = cashReport.header;
+      const iDesc = ibkrColIndex(h, ['currency summary', 'description']);
+      const iTotal = ibkrColIndex(h, ['total']);
+      if (iDesc !== -1 && iTotal !== -1) {
+        const endingRow = cashReport.rows.find(r => String(r[iDesc] || '').trim().toLowerCase().includes('ending cash'));
+        if (endingRow) {
+          const val = parseNum(endingRow[iTotal]);
+          if (!isNaN(val)) balances.push({ symbol: 'מזומן', qty: null, price: null, value: val, isCash: true });
+        }
+      }
+    }
+
+    return { txs, balances };
+  }
+
+  // ============================================================
+  // Stock-split lookup (Yahoo Finance via Cloudflare Worker proxy)
+  // ============================================================
+  // yahoo-split-proxy forwards ?ticker=SYM to Yahoo's chart API and returns
+  // the raw JSON, so splits live at chart.result[0].events.splits.
+  const SPLITS_WORKER_URL = 'https://yahoo-split-proxy.guyozeri2323.workers.dev';
+  const SPLITS_CACHE_PREFIX = 'splitProxyCache:';
+  const SPLITS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const SPLITS_FETCH_CONCURRENCY = 5;
+
+  function getCachedSplits(symbol) {
+    try {
+      const raw = localStorage.getItem(SPLITS_CACHE_PREFIX + symbol);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed.ts !== 'number' || Date.now() - parsed.ts > SPLITS_CACHE_TTL_MS) return null;
+      return parsed.splits.map(s => ({ date: new Date(s.date), ratio: s.ratio }));
+    } catch (e) { return null; }
+  }
+
+  function setCachedSplits(symbol, splits) {
+    try {
+      localStorage.setItem(SPLITS_CACHE_PREFIX + symbol, JSON.stringify({
+        ts: Date.now(),
+        splits: splits.map(s => ({ date: s.date.toISOString(), ratio: s.ratio }))
+      }));
+    } catch (e) { /* localStorage unavailable/full — caching is best-effort */ }
+  }
+
+  function parseSplitsResponse(data) {
+    const result = data && data.chart && data.chart.result && data.chart.result[0];
+    const rawSplits = result && result.events && result.events.splits;
+    if (!rawSplits) return [];
+    return Object.values(rawSplits)
+      .map(s => ({ date: new Date(s.date * 1000), ratio: s.numerator / s.denominator }))
+      .sort((a, b) => a.date - b.date);
+  }
+
+  async function fetchSplitsForSymbol(symbol) {
+    const cached = getCachedSplits(symbol);
+    if (cached) return cached;
+    const res = await fetch(`${SPLITS_WORKER_URL}/?ticker=${encodeURIComponent(symbol)}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error((data && data.error) || `HTTP ${res.status}`);
+    const splits = parseSplitsResponse(data);
+    setCachedSplits(symbol, splits);
+    return splits;
+  }
+
+  // Fetches real split history for each symbol (localStorage-cached). Symbols
+  // whose fetch fails are simply absent from the result, so computeFIFO falls
+  // back to its own oversell-based heuristic for those.
+  async function fetchSplitsForSymbols(symbols) {
+    const result = {};
+    const queue = symbols.slice();
+    async function worker() {
+      let symbol;
+      while ((symbol = queue.shift()) !== undefined) {
+        try {
+          result[symbol] = await fetchSplitsForSymbol(symbol);
+        } catch (e) {
+          console.warn(`לא ניתן היה לשלוף נתוני פיצול עבור ${symbol}:`, e);
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(SPLITS_FETCH_CONCURRENCY, symbols.length) }, worker));
+    return result;
+  }
+
+  // ============================================================
   // FIFO realized P/L engine
   // ============================================================
-  function computeFIFO(txs) {
+  // Common stock-split ratios (forward and reverse) used as a fallback to
+  // auto-detect splits when real split data couldn't be fetched for a symbol.
+  const COMMON_SPLIT_RATIOS = [2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 1.5, 2.5, 3.5, 4.5,
+    1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 6, 1 / 8, 1 / 10, 1 / 15, 1 / 20, 1 / 1.5, 1 / 2.5];
+  function nearestCleanSplitRatio(observedRatio) {
+    const TOLERANCE = 0.02;
+    for (const r of COMMON_SPLIT_RATIOS) {
+      if (Math.abs(observedRatio - r) / r < TOLERANCE) return r;
+    }
+    return null;
+  }
+
+  function computeFIFO(txs, splitsBySymbol) {
+    splitsBySymbol = splitsBySymbol || {};
     const lotsBySymbol = {};
+    const splitPtrBySymbol = {};
     const sellTrades = [];
     const warnings = [];
+    const splitNotes = [];
     const sorted = txs.filter(t => t.date).slice().sort((a, b) => a.date - b.date);
+
+    // Applies any real (verified) splits for `symbol` dated on/before `uptoDate`
+    // to its currently-open lots, advancing that symbol's split pointer.
+    function applyRealSplits(symbol, uptoDate) {
+      const splits = splitsBySymbol[symbol];
+      if (!splits || !splits.length) return;
+      let ptr = splitPtrBySymbol[symbol] || 0;
+      while (ptr < splits.length && splits[ptr].date <= uptoDate) {
+        const sp = splits[ptr];
+        const lots = lotsBySymbol[symbol];
+        if (lots && lots.length) {
+          lots.forEach(l => { l.qty *= sp.ratio; l.price /= sp.ratio; });
+          splitNotes.push(`${symbol}: פיצול מניה מאומת (Yahoo Finance) ביחס ${sp.ratio}:1 בתאריך ${sp.date.toISOString().slice(0,10)} — כמויות ומחירי הקניות הקודמות הותאמו בהתאם.`);
+        }
+        ptr++;
+      }
+      splitPtrBySymbol[symbol] = ptr;
+    }
 
     for (const t of sorted) {
       const cat = classifyAction(t.actionRaw);
+      if (t.symbol) applyRealSplits(t.symbol, t.date);
       if (cat === 'buy' && t.symbol && t.qty > 0) {
         const price = t.price != null ? t.price : (t.amount != null && t.qty ? Math.abs(t.amount) / t.qty : 0);
         (lotsBySymbol[t.symbol] = lotsBySymbol[t.symbol] || []).push({ qty: t.qty, price, date: t.date });
       } else if (cat === 'sell' && t.symbol && t.qty > 0) {
         const price = t.price != null ? t.price : (t.amount != null && t.qty ? Math.abs(t.amount) / t.qty : 0);
-        let remaining = t.qty, gain = 0, cost = 0, wdays = 0;
         const lots = lotsBySymbol[t.symbol] || [];
+        const availableQty = lots.reduce((s, l) => s + l.qty, 0);
+        const hasRealSplitData = Object.prototype.hasOwnProperty.call(splitsBySymbol, t.symbol);
+
+        // Fallback: auto-detect an unadjusted stock split by selling more units
+        // than were ever recorded as bought, in a ratio close to a common split
+        // factor. Only runs when we have no verified split data for this symbol.
+        if (!hasRealSplitData && availableQty > 1e-6 && t.qty > availableQty * 1.005) {
+          const ratio = t.qty / availableQty;
+          const splitRatio = nearestCleanSplitRatio(ratio);
+          if (splitRatio) {
+            lots.forEach(l => { l.qty *= splitRatio; l.price /= splitRatio; });
+            splitNotes.push(`${t.symbol}: זוהה אוטומטית פיצול מניה ביחס ${splitRatio}:1 (זוהה סביב ${t.date.toISOString().slice(0,10)}) — כמויות ומחירי הקניות הקודמות הותאמו בהתאם לפני חישוב התשואה.`);
+          }
+        }
+
+        let remaining = t.qty, gain = 0, cost = 0, wdays = 0;
         while (remaining > 1e-9 && lots.length) {
           const lot = lots[0];
           const take = Math.min(lot.qty, remaining);
@@ -966,8 +1247,9 @@
           if (lot.qty <= 1e-9) lots.shift();
         }
         if (remaining > 1e-4) {
-          warnings.push(`${t.symbol}: נמכרו ${remaining.toFixed(2)} יחידות יותר ממה שנרשם כנקנה (בתאריך ${t.date.toISOString().slice(0,10)}) — ייתכן ומדובר בפיצול מניה, העברה מברוקר אחר, או נתון היסטורי חסר. החלק העודף לא נכלל בחישובי התשואה.`);
+          warnings.push(`${t.symbol}: נמכרו ${remaining.toFixed(2)} יחידות יותר ממה שנרשם כנקנה (בתאריך ${t.date.toISOString().slice(0,10)}) — ייתכן ומדובר בפיצול מניה בלתי-מזוהה, העברה מברוקר אחר, או נתון היסטורי חסר. החלק העודף לא נכלל בחישובי התשואה.`);
         }
+
         const matchedQty = t.qty - remaining;
         if (matchedQty > 1e-9) {
           sellTrades.push({ year: t.date.getFullYear(), symbol: t.symbol, gain, cost, qty: matchedQty, holdDaysWeighted: wdays });
@@ -980,7 +1262,7 @@
       const qty = lots.reduce((s, l) => s + l.qty, 0);
       if (qty > 1e-6) openPositions[sym] = qty;
     }
-    return { sellTrades, warnings, openPositions };
+    return { sellTrades, warnings: splitNotes.concat(warnings), openPositions };
   }
 
   // ============================================================
@@ -996,7 +1278,7 @@
       const amt = t.amount || 0;
       if (cat === 'deposit') yr.deposits += Math.abs(amt);
       else if (cat === 'withdrawal') yr.withdrawals += Math.abs(amt);
-      else if (cat === 'dividend') yr.dividends += amt;
+      else if (cat === 'dividend' || cat === 'interest') yr.dividends += amt;
       else if (cat === 'tax') yr.tax += amt;
       else if (cat === 'fee') yr.fees += Math.abs(amt);
       if (t.fee) yr.fees += Math.abs(t.fee);
@@ -1035,7 +1317,7 @@
       const amt = t.amount || 0;
       if (cat === 'deposit') deposits += Math.abs(amt);
       else if (cat === 'withdrawal') withdrawals += Math.abs(amt);
-      else if (cat === 'dividend') dividends += amt;
+      else if (cat === 'dividend' || cat === 'interest') dividends += amt;
       else if (cat === 'tax') tax += amt;
       else if (cat === 'fee') fees += Math.abs(amt);
       if (t.fee) fees += Math.abs(t.fee);
@@ -1118,8 +1400,10 @@
     el.className = 'show ' + (kind || 'info');
   }
 
-  function computeAll(txs, balances) {
-    const fifo = computeFIFO(txs);
+  async function computeAll(txs, balances) {
+    const symbols = Array.from(new Set(txs.filter(t => t.symbol).map(t => t.symbol)));
+    const splitsBySymbol = await fetchSplitsForSymbols(symbols);
+    const fifo = computeFIFO(txs, splitsBySymbol);
     const yearly = aggregateYearly(txs, fifo.sellTrades);
     const symYear = aggregateSymbolYear(fifo.sellTrades);
     const totals = computeTotals(txs, fifo.sellTrades, balances, fifo.openPositions);
@@ -1199,21 +1483,40 @@
     // Yearly table
     const tbody = document.getElementById('yearlyTableBody');
     if (!yearly.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-note">אין נתונים</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-note">אין נתונים</td></tr>';
     } else {
-      tbody.innerHTML = yearly.map(y => {
+      const rowsHtml = yearly.map(y => {
         const netFlow = y.deposits - y.withdrawals;
-        const feesTaxCost = y.fees + Math.max(-y.tax, 0);
         const returnOnTrades = y.cost > 0 ? (y.realizedPL / y.cost * 100) : null;
         return `<tr>
           <td>${y.year}</td>
           <td class="num ${netFlow >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(netFlow)}</td>
           <td class="num ${y.realizedPL >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(y.realizedPL)}</td>
           <td class="num">${fmtMoney(y.dividends)}</td>
-          <td class="num negative">${fmtMoneySigned(-feesTaxCost)}</td>
+          <td class="num negative">${fmtMoneySigned(-y.fees)}</td>
+          <td class="num ${y.tax >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(y.tax)}</td>
           <td class="num ${returnOnTrades === null ? '' : (returnOnTrades >= 0 ? 'positive' : 'negative')}">${returnOnTrades === null ? '—' : fmtPct(returnOnTrades)}</td>
         </tr>`;
       }).join('');
+
+      const totalNetFlow = yearly.reduce((s, y) => s + (y.deposits - y.withdrawals), 0);
+      const totalRealizedPL = yearly.reduce((s, y) => s + y.realizedPL, 0);
+      const totalDividends = yearly.reduce((s, y) => s + y.dividends, 0);
+      const totalFees = yearly.reduce((s, y) => s + y.fees, 0);
+      const totalTax = yearly.reduce((s, y) => s + y.tax, 0);
+      const totalCost = yearly.reduce((s, y) => s + y.cost, 0);
+      const totalReturnOnTrades = totalCost > 0 ? (totalRealizedPL / totalCost * 100) : null;
+      const totalRowHtml = `<tr class="total-row">
+        <td>סה"כ</td>
+        <td class="num ${totalNetFlow >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(totalNetFlow)}</td>
+        <td class="num ${totalRealizedPL >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(totalRealizedPL)}</td>
+        <td class="num">${fmtMoney(totalDividends)}</td>
+        <td class="num negative">${fmtMoneySigned(-totalFees)}</td>
+        <td class="num ${totalTax >= 0 ? 'positive' : 'negative'}">${fmtMoneySigned(totalTax)}</td>
+        <td class="num ${totalReturnOnTrades === null ? '' : (totalReturnOnTrades >= 0 ? 'positive' : 'negative')}">${totalReturnOnTrades === null ? '—' : fmtPct(totalReturnOnTrades)}</td>
+      </tr>`;
+
+      tbody.innerHTML = rowsHtml + totalRowHtml;
     }
 
     renderTopWorstGrids(symYear, years, colorOf);
@@ -1348,7 +1651,7 @@
         color: colorOf(worstYear.year)
       },
       {
-        k: 'סך הדיבידנדים שנאספו',
+        k: 'סך הדיבידנדים והריבית שנאספו',
         v: fmtMoney(totals.dividends)
       },
       {
@@ -1439,6 +1742,12 @@
   function processSheets(sheets) {
     let txs = [], balances = [], unknownSheets = [];
     for (const sheet of sheets) {
+      if (detectIBKRFormat(sheet.rows)) {
+        const ibkr = parseIBKRSections(sheet.rows);
+        txs = txs.concat(ibkr.txs);
+        balances = balances.concat(ibkr.balances);
+        continue;
+      }
       const header = findHeaderRow(sheet.rows);
       const type = classifySheetType(header);
       if (type === 'transactions') txs = txs.concat(parseTransactionsSheet(sheet.rows, header));
@@ -1450,7 +1759,7 @@
 
   let currentUserName = '';
 
-  function loadFromSheets(sheets, label) {
+  async function loadFromSheets(sheets, label) {
     setUploadStatus('קורא ומעבד את הקובץ…', 'info');
     try {
       const { txs, balances, unknownSheets } = processSheets(sheets);
@@ -1458,7 +1767,8 @@
         setUploadStatus('לא נמצאו עמודות מוכרות של תנועות או יתרות בקובץ הזה. ודא שיש כותרות כמו תאריך/סוג פעולה/נייר/סכום (או Date/Action/Symbol/Amount).', 'err');
         return;
       }
-      const computed = computeAll(txs, balances);
+      setUploadStatus('שולף נתוני פיצולי מניות (Yahoo Finance)…', 'info');
+      const computed = await computeAll(txs, balances);
       render(computed);
       document.getElementById('emptyState').style.display = 'none';
       document.getElementById('dashboardSections').style.display = 'block';
