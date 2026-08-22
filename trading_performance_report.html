@@ -171,7 +171,7 @@
   /* Stat tiles */
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
   }
   .stat-tile {
@@ -182,10 +182,12 @@
     padding: 16px 18px;
     box-shadow: var(--card-shadow);
   }
-  .stat-tile.accent-violet { border-top-color: var(--accent-navy); }
-  .stat-tile.accent-blue   { border-top-color: var(--accent-slate); }
-  .stat-tile.accent-good   { border-top-color: var(--good); }
-  .stat-tile.accent-aqua   { border-top-color: var(--accent-gold); }
+  .stat-tile.accent-violet   { border-top-color: var(--accent-navy); }
+  .stat-tile.accent-blue     { border-top-color: var(--accent-slate); }
+  .stat-tile.accent-good     { border-top-color: var(--good); }
+  .stat-tile.accent-aqua     { border-top-color: var(--accent-gold); }
+  .stat-tile.accent-critical { border-top-color: var(--critical); }
+  .stat-tile.accent-muted    { border-top-color: var(--text-muted); }
   .stat-label {
     font-size: 12.5px;
     color: var(--text-secondary);
@@ -472,8 +474,17 @@
       <h2>ביצועי החשבון הכוללים (מתחילת הפעילות)</h2>
       <div class="stat-grid">
         <div class="stat-tile accent-violet">
+          <div class="stat-label">סך הפקדות</div>
+          <div class="stat-value" id="statDeposits">&mdash;</div>
+        </div>
+        <div class="stat-tile accent-critical">
+          <div class="stat-label">סך משיכות</div>
+          <div class="stat-value" id="statWithdrawals">&mdash;</div>
+        </div>
+        <div class="stat-tile accent-muted">
           <div class="stat-label">סך הפקדות נטו</div>
           <div class="stat-value" id="statInvested">&mdash;</div>
+          <div class="stat-sub">הפקדות פחות משיכות</div>
         </div>
         <div class="stat-tile accent-blue">
           <div class="stat-label">שווי חשבון נוכחי</div>
@@ -1428,6 +1439,8 @@
       'לא נמצאו תנועות בקובץ';
 
     // Stat cards
+    document.getElementById('statDeposits').textContent = fmtMoney(totals.deposits);
+    document.getElementById('statWithdrawals').textContent = fmtMoney(totals.withdrawals);
     document.getElementById('statInvested').textContent = fmtMoney(totals.netCashInvested);
 
     const valEl = document.getElementById('statValue');
