@@ -234,7 +234,7 @@
     left: 50%;
     transform: translateX(-50%);
     width: 230px;
-    background: var(--surface-1);
+    background: color-mix(in srgb, var(--surface-1) 90%, #000 10%);
     border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: var(--card-shadow);
@@ -249,6 +249,7 @@
   }
   .info-badge.active .info-pop { display: block; }
   thead th .info-badge { vertical-align: -2px; }
+  thead th .info-badge .info-pop { top: auto; bottom: 22px; }
 
   /* Charts */
   .chart-grid {
@@ -352,7 +353,7 @@
   td.positive { color: var(--good-text); font-weight: 600; }
   td.negative { color: var(--critical); font-weight: 600; }
   td.label-cell { color: var(--text-secondary); }
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow-x: auto; overflow-y: visible; }
 
   .note {
     border: 1px solid var(--border);
