@@ -206,6 +206,50 @@
   .stat-value.na { font-size: 15px; color: var(--text-muted); font-weight: 600; }
   .stat-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
 
+  /* Info badges (tap/click explainer bubbles) */
+  .info-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--gridline);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    vertical-align: middle;
+    margin: 0 3px;
+  }
+  .info-badge:hover, .info-badge.active { background: var(--accent-slate); color: #fff; }
+  .info-pop {
+    display: none;
+    position: absolute;
+    z-index: 30;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 230px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--card-shadow);
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    font-weight: 400;
+    color: var(--text-secondary);
+    text-align: right;
+    direction: rtl;
+    cursor: default;
+  }
+  .info-badge.active .info-pop { display: block; }
+  thead th .info-badge { vertical-align: -2px; }
+
   /* Charts */
   .chart-grid {
     display: grid;
@@ -414,6 +458,7 @@
     .viz-root { padding: 0; background: #ffffff; }
     .btn-row, .theme-toggle, .btn-export, .btn-upload { display: none !important; }
     .tooltip { display: none !important; }
+    .info-badge { display: none !important; }
     #emptyState { display: none !important; }
     .stat-tile, .chart-card, table, .note, .insight-card {
       box-shadow: none !important;
@@ -482,7 +527,7 @@
           <div class="stat-value" id="statWithdrawals">&mdash;</div>
         </div>
         <div class="stat-tile accent-muted">
-          <div class="stat-label">סך הפקדות נטו</div>
+          <div class="stat-label">סך הפקדות נטו<span class="info-badge" data-tip="הפקדות פחות משיכות, מצטבר מתחילת הפעילות. זה 'הבסיס' שמשמש לחישוב אחוז התשואה למטה.">?</span></div>
           <div class="stat-value" id="statInvested">&mdash;</div>
           <div class="stat-sub">הפקדות פחות משיכות</div>
         </div>
@@ -492,12 +537,12 @@
           <div class="stat-sub" id="statValueSub"></div>
         </div>
         <div class="stat-tile accent-good">
-          <div class="stat-label">רווח נקי כולל</div>
+          <div class="stat-label">רווח נקי כולל<span class="info-badge" data-tip="שווי החשבון הנוכחי פחות הפקדות נטו. כולל גם רווח ממומש (עסקאות שנסגרו) וגם רווח על פני פוזיציות פתוחות.">?</span></div>
           <div class="stat-value" id="statProfit">&mdash;</div>
           <div class="stat-sub" id="statProfitSub"></div>
         </div>
         <div class="stat-tile accent-aqua">
-          <div class="stat-label">תשואה כוללת</div>
+          <div class="stat-label">תשואה כוללת<span class="info-badge" data-tip="רווח נקי כולל, חלקי הפקדות נטו, באחוזים. שים לב: משיכות מקטינות את 'הפקדות נטו', ולכן ככל שמושכים יותר כסף – האחוז עלול להיראות גבוה יותר, גם בלי שהרווח בפועל השתנה.">?</span></div>
           <div class="stat-value" id="statRoi">&mdash;</div>
           <div class="stat-sub" id="statRoiSub"></div>
         </div>
@@ -512,12 +557,12 @@
         <thead>
           <tr>
             <th>שנה</th>
-            <th class="num">תזרים מזומנים נטו</th>
-            <th class="num">רווח ממומש ($)</th>
+            <th class="num">תזרים מזומנים נטו<span class="info-badge" data-tip="הפקדות פחות משיכות באותה שנה בלבד (לא מצטבר). חיובי = הכנסת יותר כסף מששלפת, שלילי = ההפך.">?</span></th>
+            <th class="num">רווח ממומש ($)<span class="info-badge" data-tip="רווח או הפסד מעסקאות שנסגרו (נמכרו) באותה שנה, לפי שיטת FIFO (הראשון שנכנס, הראשון שיוצא).">?</span></th>
             <th class="num">דיבידנדים וריבית</th>
             <th class="num">עמלות</th>
             <th class="num">מס</th>
-            <th class="num">תשואה על עסקאות</th>
+            <th class="num">תשואה על עסקאות<span class="info-badge" data-tip="רווח ממומש חלקי עלות הבסיס של אותן עסקאות, באחוזים. משקף רק עסקאות שנסגרו באותה שנה — לא את כל התיק.">?</span></th>
           </tr>
         </thead>
         <tbody id="yearlyTableBody"></tbody>
@@ -571,8 +616,8 @@
           <tr>
             <th>שנה</th>
             <th class="num">מס' עסקאות סגורות</th>
-            <th class="num">אחוז עסקאות מרוויחות</th>
-            <th class="num">משך אחזקה ממוצע</th>
+            <th class="num">אחוז עסקאות מרוויחות<span class="info-badge" data-tip="כמה אחוז מהעסקאות שנסגרו הניבו רווח (נספר לפי מספר עסקאות, לא לפי גודל הרווח).">?</span></th>
+            <th class="num">משך אחזקה ממוצע<span class="info-badge" data-tip="ממוצע ימי ההחזקה של הפוזיציה עד המכירה, ממושקל לפי כמות המניות שנמכרו.">?</span></th>
           </tr>
         </thead>
         <tbody id="efficiencyTableBody"></tbody>
@@ -1823,6 +1868,23 @@
     readFile(file).then(sheets => loadFromSheets(sheets, file.name))
       .catch(err => setUploadStatus('שגיאה בקריאת הקובץ: ' + err.message, 'err'));
     fileInput.value = '';
+  });
+
+  // Info badges — tap/click explainer bubbles next to complex terms
+  document.querySelectorAll('.info-badge').forEach(badge => {
+    const pop = document.createElement('div');
+    pop.className = 'info-pop';
+    pop.textContent = badge.dataset.tip;
+    badge.appendChild(pop);
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasActive = badge.classList.contains('active');
+      document.querySelectorAll('.info-badge.active').forEach(b => b.classList.remove('active'));
+      if (!wasActive) badge.classList.add('active');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.info-badge.active').forEach(b => b.classList.remove('active'));
   });
 })();
 </script>
